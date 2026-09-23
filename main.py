@@ -7,7 +7,7 @@ import httpx
 
 app = FastAPI()
 
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-3.6-flash"
 
 SYSTEM_INSTRUCTION = (
     "Ты — объективный голосовой справочник в умной колонке. Твоя единственная цель — 100% фактическая достоверность.\n"
