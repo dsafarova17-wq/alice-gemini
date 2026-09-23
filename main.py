@@ -8,7 +8,7 @@ import httpx
 app = FastAPI()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_MODEL = "gemini-2.0-flash"
 GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
 
 SYSTEM_INSTRUCTION = (
