@@ -16,14 +16,21 @@ SYSTEM_INSTRUCTION = (
     "2. Полностью исключи личное мнение, субъективные суждения, эмоциональные оценки и оценочные прилагательные.\n"
     "3. Если точной подтвержденной информации по запросу нет или факт невозможно верифицировать, отвечай строго: 'Я не могу это подтвердить'.\n"
     "4. Не пытайся домысливать ответ, если данных недостаточно.\n"
-    "5. Формат ответа: емкий и содержательный разговорный стиль (2–4 полных предложения). Всегда обязательно договаривай начатую мысль до конца и закрывай предложение точкой. Не используй списки, звездочки, решетки и служебные знаки Markdown."
+    "5. Формат ответа: емкий разговорный стиль (2–3 полных предложения). Всегда обязательно договаривай мысль до конца и закрывай предложение точкой. Не используй списки, звездочки, решетки и служебные знаки Markdown."
 )
 
 
 def clean_tts_text(text: str) -> str:
     text = re.sub(r"[*#_`~>]", "", text)
     text = re.sub(r"\n+", " ", text)
-    return text.strip()
+    text = text.strip()
+    if len(text) > 1000:
+        last_dot = text[:1000].rfind(".")
+        if last_dot != -1:
+            text = text[:last_dot + 1]
+        else:
+            text = text[:1000]
+    return text
 
 
 async def ask_gemini(user_prompt: str) -> str:
@@ -42,12 +49,15 @@ async def ask_gemini(user_prompt: str) -> str:
         ],
         "generationConfig": {
             "temperature": 0.0,
-            "maxOutputTokens": 450,
+            "maxOutputTokens": 250,
+            "thinkingConfig": {
+                "thinkingBudget": 0
+            }
         },
     }
 
     try:
-        async with httpx.AsyncClient(timeout=4.5) as client:
+        async with httpx.AsyncClient(timeout=2.2) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code == 200:
                 data = resp.json()
@@ -60,7 +70,7 @@ async def ask_gemini(user_prompt: str) -> str:
             else:
                 return f"Google {resp.status_code}: {resp.text}"
     except httpx.TimeoutException:
-        return "Время ожидания ответа истекло. Пожалуйста, повторите запрос."
+        return "Запрос занял слишком много времени. Пожалуйста, спросите еще раз."
     except Exception as e:
         return f"Внутренняя ошибка сервиса: {e}"
 
