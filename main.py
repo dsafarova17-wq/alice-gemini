@@ -42,7 +42,7 @@ async def ask_gemini(user_prompt: str) -> str:
         ],
         "generationConfig": {
             "temperature": 0.0,
-            "maxOutputTokens": 700,
+            "maxOutputTokens": 450,
         },
     }
 
