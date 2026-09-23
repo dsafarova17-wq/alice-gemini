@@ -1,6 +1,6 @@
 import os
 import re
-from typing import Any, Dict
+from typing import Any, Dict, List
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import httpx
@@ -33,20 +33,28 @@ def clean_tts_text(text: str) -> str:
     return text
 
 
-async def ask_gemini(user_prompt: str) -> str:
+async def ask_gemini(user_prompt: str, history: List[Dict[str, str]]) -> str:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         return "Ошибка: переменная GEMINI_API_KEY не задана в настройках Render."
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
 
+    # Формируем цепочку сообщений: история предыдущих реплик + текущий вопрос
+    contents = []
+    for item in history[-4:]:
+        role = item.get("role", "user")
+        text = item.get("text", "")
+        if text:
+            contents.append({"role": role, "parts": [{"text": text}]})
+
+    contents.append({"role": "user", "parts": [{"text": user_prompt}]})
+
     payload = {
         "systemInstruction": {
             "parts": [{"text": SYSTEM_INSTRUCTION}]
         },
-        "contents": [
-            {"parts": [{"text": user_prompt}]}
-        ],
+        "contents": contents,
         "generationConfig": {
             "temperature": 0.0,
             "maxOutputTokens": 250,
@@ -87,10 +95,12 @@ async def yandex_webhook(request: Request) -> JSONResponse:
     session = event.get("session", {})
     is_new: bool = session.get("new", False)
 
+    # При новом диалоге сбрасываем историю
     if is_new:
         return JSONResponse(
             content={
                 "version": version,
+                "session_state": {"history": []},
                 "response": {
                     "text": "Фактологический справочник на связи. Задайте вопрос.",
                     "end_session": False,
@@ -104,6 +114,7 @@ async def yandex_webhook(request: Request) -> JSONResponse:
         return JSONResponse(
             content={
                 "version": version,
+                "session_state": {},
                 "response": {"text": "Сессия завершена.", "end_session": True},
             }
         )
@@ -119,10 +130,23 @@ async def yandex_webhook(request: Request) -> JSONResponse:
             }
         )
 
-    gemini_reply = await ask_gemini(command)
+    # Достаем историю из сессионного хранилища Яндекса
+    state = event.get("state", {})
+    session_data = state.get("session", {}) if isinstance(state, dict) else {}
+    history = session_data.get("history", []) if isinstance(session_data, dict) else []
+
+    gemini_reply = await ask_gemini(command, history)
+
+    # Обновляем историю: сохраняем реплику пользователя и ответ модели
+    updated_history = history[-4:] + [
+        {"role": "user", "text": command},
+        {"role": "model", "text": gemini_reply},
+    ]
+
     return JSONResponse(
         content={
             "version": version,
+            "session_state": {"history": updated_history},
             "response": {"text": gemini_reply, "end_session": False},
         }
     )
