@@ -7,9 +7,7 @@ import httpx
 
 app = FastAPI()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.0-flash"
-GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
 
 SYSTEM_INSTRUCTION = (
     "Ты — объективный голосовой справочник в умной колонке. Твоя единственная цель — 100% фактическая достоверность.\n"
@@ -21,33 +19,56 @@ SYSTEM_INSTRUCTION = (
     "5. Формат ответа: краткий разговорный стиль без списков, звездочек, решеток и служебных символов Markdown, чтобы текст корректно зачитывался синтезатором речи Алисы."
 )
 
+
 def clean_tts_text(text: str) -> str:
     text = re.sub(r"[*#_`~>]", "", text)
     text = re.sub(r"\n+", " ", text)
     return text.strip()
 
+
 async def ask_gemini(user_prompt: str) -> str:
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return "Ошибка: переменная GEMINI_API_KEY не задана в настройках Render."
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
+
     payload = {
-        "system_instruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
-        "contents": [{"parts": [{"text": user_prompt}]}],
+        "systemInstruction": {
+            "parts": [{"text": SYSTEM_INSTRUCTION}]
+        },
+        "contents": [
+            {"parts": [{"text": user_prompt}]}
+        ],
         "generationConfig": {
             "temperature": 0.0,
             "maxOutputTokens": 300,
         },
     }
+
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.post(GEMINI_ENDPOINT, json=payload)
+        async with httpx.AsyncClient(timeout=4.5) as client:
+            resp = await client.post(url, json=payload)
             if resp.status_code == 200:
                 data = resp.json()
-                raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-                return clean_tts_text(raw_text)
+                candidates = data.get("candidates", [])
+                if candidates and "content" in candidates[0]:
+                    parts = candidates[0]["content"].get("parts", [])
+                    if parts and "text" in parts[0]:
+                        return clean_tts_text(parts[0]["text"])
+                return "Не удалось сформировать текстовый ответ."
             else:
-                return f"Google {response.status_code}: {response.text}"
+                return f"Google {resp.status_code}: {resp.text}"
     except httpx.TimeoutException:
         return "Время ожидания ответа истекло. Пожалуйста, повторите запрос."
-    except Exception:
-        return "Произошла ошибка при обращении к базе знаний."
+    except Exception as e:
+        return f"Внутренняя ошибка сервиса: {e}"
+
+
+@app.get("/")
+async def root() -> Dict[str, str]:
+    return {"status": "ok", "service": "alice-gemini"}
+
 
 @app.post("/webhook")
 async def yandex_webhook(request: Request) -> JSONResponse:
