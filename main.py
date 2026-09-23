@@ -43,7 +43,7 @@ async def ask_gemini(user_prompt: str) -> str:
                 raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
                 return clean_tts_text(raw_text)
             else:
-                return "Сервер Google вернул ошибку при получении данных."
+                return f"Google {response.status_code}: {response.text}"
     except httpx.TimeoutException:
         return "Время ожидания ответа истекло. Пожалуйста, повторите запрос."
     except Exception:
